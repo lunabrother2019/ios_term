@@ -40,10 +40,10 @@ final class SimplePasswordDelegate: NIOSSHClientUserAuthenticationDelegate {
             return
         }
         tried = true
-        print("[SSH] auth: sending password for \(username)")
+        print("[SSH] auth: sending password for \(username), pwd length=\(password.count), first=\(password.prefix(1)), last=\(password.suffix(1))")
         nextChallengePromise.succeed(.init(
             username: username,
-            serviceName: "ssh-connection",
+            serviceName: "",
             offer: .password(.init(password: password))
         ))
     }
