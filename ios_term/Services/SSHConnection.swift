@@ -33,14 +33,11 @@ final class SimplePasswordDelegate: NIOSSHClientUserAuthenticationDelegate {
     }
 
     func nextAuthenticationType(availableMethods: NIOSSHAvailableUserAuthenticationMethods, nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>) {
-        print("[SSH] auth callback: methods=\(availableMethods), tried=\(tried)")
         guard !tried, availableMethods.contains(.password) else {
-            print("[SSH] auth: no more methods")
             nextChallengePromise.succeed(nil)
             return
         }
         tried = true
-        print("[SSH] auth: sending password for \(username), pwd length=\(password.count), first=\(password.prefix(1)), last=\(password.suffix(1))")
         nextChallengePromise.succeed(.init(
             username: username,
             serviceName: "",
@@ -116,45 +113,12 @@ final class SSHShellChannelHandler: ChannelDuplexHandler {
     }
 }
 
-final class SSHDebugHandler: ChannelDuplexHandler {
-    typealias InboundIn = Any
-    typealias OutboundIn = Any
-
-    func channelActive(context: ChannelHandlerContext) {
-        print("[SSH] TCP connected to \(context.channel.remoteAddress?.description ?? "?")")
-        context.fireChannelActive()
-    }
-
-    func channelInactive(context: ChannelHandlerContext) {
-        print("[SSH] TCP disconnected")
-        context.fireChannelInactive()
-    }
-
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        context.fireChannelRead(data)
-    }
-
-    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        context.write(data, promise: promise)
-    }
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        print("[SSH] pipeline error: \(error)")
-        context.fireErrorCaught(error)
-    }
-
-    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-        print("[SSH] event: \(event)")
-        context.fireUserInboundEventTriggered(event)
-    }
-}
-
 final class SSHErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Any
     var onError: ((Error) -> Void)?
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
-        print("[SSH] error handler: \(error)")
+        print("SSH error: \(error)")
         DispatchQueue.main.async { [weak self] in
             self?.onError?(error)
         }
@@ -193,12 +157,9 @@ final class SSHConnection {
         let serverAuthDelegate = AcceptAllHostKeysDelegate()
         let errHandler = self.errorHandler
 
-        print("[SSH] connecting to \(info.host):\(info.port) as \(info.username)")
-
         let bootstrap = ClientBootstrap(group: group)
             .channelInitializer { channel in
                 channel.pipeline.addHandlers([
-                    SSHDebugHandler(),
                     NIOSSHHandler(
                         role: .client(.init(
                             userAuthDelegate: userAuthDelegate,

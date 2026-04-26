@@ -82,6 +82,7 @@ ios_term/
 - **RSA 密钥**：SwiftNIO SSH 原生支持 Ed25519/ECDSA，RSA .pem 可能需要 SwiftCrypto 辅助解析
 - **后台连接**：iOS 后台 ~30 秒会挂起 app，SSH 会断，需要重连机制
 - **内存**：多会话时每个 TerminalView 有 scrollback buffer，建议限制 10000 行
+- **服务器兼容性**：SwiftNIO SSH 0.13.0 与 OpenSSH 8.7 的旧版 strict KEX 补丁（如 Rocky Linux 9 的 openssh-8.7p1-38）存在兼容性问题，密码认证会失败。升级 OpenSSH 到 8.7p1-48+ 或使用 OpenSSH 9.x 可解决。认证代理需加 `tried` 标记防止密码重试导致服务器封禁 IP
 
 ## 验证方式
 
