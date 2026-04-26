@@ -25,6 +25,7 @@ final class AcceptAllHostKeysDelegate: NIOSSHClientServerAuthenticationDelegate 
 final class SimplePasswordDelegate: NIOSSHClientUserAuthenticationDelegate {
     private let username: String
     private let password: String
+    private var tried = false
 
     init(username: String, password: String) {
         self.username = username
@@ -32,11 +33,16 @@ final class SimplePasswordDelegate: NIOSSHClientUserAuthenticationDelegate {
     }
 
     func nextAuthenticationType(availableMethods: NIOSSHAvailableUserAuthenticationMethods, nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>) {
-        if availableMethods.contains(.password) {
-            nextChallengePromise.succeed(.init(username: username, serviceName: "", offer: .password(.init(password: password))))
-        } else {
+        guard !tried, availableMethods.contains(.password) else {
             nextChallengePromise.succeed(nil)
+            return
         }
+        tried = true
+        nextChallengePromise.succeed(.init(
+            username: username,
+            serviceName: "ssh-connection",
+            offer: .password(.init(password: password))
+        ))
     }
 }
 
@@ -109,8 +115,13 @@ final class SSHShellChannelHandler: ChannelDuplexHandler {
 
 final class SSHErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Any
+    var onError: ((Error) -> Void)?
+
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         print("SSH error: \(error)")
+        DispatchQueue.main.async { [weak self] in
+            self?.onError?(error)
+        }
         context.close(promise: nil)
     }
 }
@@ -120,6 +131,7 @@ final class SSHConnection {
     private var channel: Channel?
     private var shellChannel: Channel?
     private let shellHandler = SSHShellChannelHandler(columns: 80, rows: 24)
+    private let errorHandler = SSHErrorHandler()
 
     var onData: (([UInt8]) -> Void)? {
         get { shellHandler.onData }
@@ -131,6 +143,11 @@ final class SSHConnection {
         set { shellHandler.onClose = newValue }
     }
 
+    var onError: ((Error) -> Void)? {
+        get { errorHandler.onError }
+        set { errorHandler.onError = newValue }
+    }
+
     func connect(info: SSHConnectionInfo) {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.group = group
@@ -138,6 +155,7 @@ final class SSHConnection {
         let userAuthDelegate = SimplePasswordDelegate(
             username: info.username, password: info.password ?? "")
         let serverAuthDelegate = AcceptAllHostKeysDelegate()
+        let errHandler = self.errorHandler
 
         let bootstrap = ClientBootstrap(group: group)
             .channelInitializer { channel in
@@ -148,7 +166,7 @@ final class SSHConnection {
                             serverAuthDelegate: serverAuthDelegate)),
                         allocator: channel.allocator,
                         inboundChildChannelInitializer: nil),
-                    SSHErrorHandler()
+                    errHandler
                 ])
             }
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -173,7 +191,10 @@ final class SSHConnection {
                 self.shellChannel = shellChannel
             case .failure(let error):
                 print("SSH connection failed: \(error)")
-                DispatchQueue.main.async { self.onClose?() }
+                DispatchQueue.main.async {
+                    self.onError?(error)
+                    self.onClose?()
+                }
             }
         }
     }

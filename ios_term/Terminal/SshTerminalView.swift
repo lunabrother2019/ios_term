@@ -12,6 +12,9 @@ class SshTerminalView: TerminalView, TerminalViewDelegate {
         conn.onData = { [weak self] bytes in
             self?.feed(byteArray: ArraySlice(bytes))
         }
+        conn.onError = { [weak self] error in
+            self?.feed(text: "\r\n[SSH error: \(error)]\r\n")
+        }
         conn.onClose = { [weak self] in
             self?.feed(text: "\r\n[Connection closed]\r\n")
         }
